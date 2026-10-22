@@ -23,6 +23,9 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 // Rute yang dikunci (Hanya bisa diakses kalau udah login)
 Route::middleware('auth')->group(function () {
     Route::get('/admin/dashboard', [AdminController::class, 'dashboard'])->name('admin.dashboard');
+    // Data dashboard realtime (dipanggil berkala oleh browser) + sakelar sembunyikan perolehan kandidat
+    Route::get('/admin/dashboard/data', [AdminController::class, 'dashboardData'])->name('admin.dashboard.data');
+    Route::post('/admin/dashboard/sembunyikan', [AdminController::class, 'sembunyikanPerolehan'])->name('admin.dashboard.sembunyikan');
 
     // Rute Halaman DPT
     Route::get('/admin/pemilih', [PemilihController::class, 'index'])->name('admin.pemilih');
