@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Support\KodeQr;
+use App\Support\Pengaturan;
+use Illuminate\Support\Facades\Validator;
 
 class PemilihController extends Controller
 {
@@ -35,7 +37,16 @@ class PemilihController extends Controller
         // Daftar TPS yang ada, untuk filter cetak massal
         $daftarTps = DB::table('pemilih')->select('no_tps')->distinct()->orderBy('no_tps')->pluck('no_tps');
 
-        return view('admin.pemilih', compact('pemilih', 'search', 'nextNoUrut', 'daftarTps'));
+        // Sebaran pemilih per TPS dan bilik (untuk memeriksa hasil pengaturan massal)
+        $sebaran = DB::table('pemilih')
+            ->select('no_tps', 'no_bilik', DB::raw('count(*) as jumlah'))
+            ->groupBy('no_tps', 'no_bilik')
+            ->orderBy('no_tps')->orderBy('no_bilik')
+            ->get();
+
+        $tpsKiosk = Pengaturan::tpsKiosk();
+
+        return view('admin.pemilih', compact('pemilih', 'search', 'nextNoUrut', 'daftarTps', 'sebaran', 'tpsKiosk'));
     }
 
 
@@ -124,7 +135,11 @@ class PemilihController extends Controller
             'nama'          => 'required|string|max:255',
             'jenis_kelamin' => 'required|in:L,P',
             'umur'          => 'required|numeric|min:17',
+            'no_tps'        => 'nullable|integer|between:1,99',
+            'no_bilik'      => 'nullable|integer|between:1,99',
         ], [
+            'no_tps.between'   => 'Gagal: Nomor TPS harus antara 1 sampai 99!',
+            'no_bilik.between' => 'Gagal: Nomor bilik harus antara 1 sampai 99!',
             'nik.unique' => 'Gagal: NIK ini sudah terdaftar di sistem!',
             'nik.digits' => 'Gagal: NIK wajib berjumlah 16 digit angka!',
             'no_urut_dpt.unique' => 'Gagal: Nomor Urut DPT ini sudah dipakai warga lain!',
@@ -140,8 +155,8 @@ class PemilihController extends Controller
             'nama'           => strtoupper($request->nama),
             'jenis_kelamin'  => $request->jenis_kelamin,
             'umur'           => $request->umur,
-            'no_tps'         => 1,
-            'no_bilik'       => 1,
+            'no_tps'         => (int) ($request->input('no_tps') ?: 1),
+            'no_bilik'       => (int) ($request->input('no_bilik') ?: 1),
             'status_memilih' => 0
         ]);
         
@@ -205,6 +220,93 @@ class PemilihController extends Controller
         return back()->with('success', 'QR baru dibuat, QR lama tidak berlaku. Klik "Cetak" untuk mencetak ulang undangan.');
     }
 
+    // Atur TPS & bilik secara massal per rentang No. Urut DPT.
+    // Contoh: 1-500 = TPS 1 bilik 1, 501-1000 = TPS 1 bilik 2.
+    public function aturTps(Request $request)
+    {
+        $baris = collect($request->input('aturan', []))
+            ->filter(fn ($a) => is_array($a) && collect($a)->filter(fn ($v) => $v !== null && $v !== '')->isNotEmpty())
+            ->values();   // baris yang kosong semua diabaikan
+
+        if ($baris->isEmpty()) {
+            return back()->with('error', 'Isi minimal satu aturan (rentang No. Urut, TPS, dan bilik).');
+        }
+        if ($baris->count() > 50) {
+            return back()->with('error', 'Maksimal 50 aturan sekali simpan.');
+        }
+
+        $aturan = [];
+        foreach ($baris as $i => $a) {
+            $no = $i + 1;
+            $v = Validator::make($a, [
+                'dari'   => 'required|integer|min:1',
+                'sampai' => 'required|integer|min:1',
+                'tps'    => 'required|integer|between:1,99',
+                'bilik'  => 'required|integer|between:1,99',
+            ]);
+
+            if ($v->fails()) {
+                return back()->with('error', "Aturan {$no}: semua kolom wajib diisi dengan angka (No. Urut mulai 1, TPS dan bilik 1-99).");
+            }
+            if ((int) $a['sampai'] < (int) $a['dari']) {
+                return back()->with('error', "Aturan {$no}: \"Sampai\" tidak boleh lebih kecil dari \"Dari\".");
+            }
+
+            $aturan[] = ['no' => $no, 'dari' => (int) $a['dari'], 'sampai' => (int) $a['sampai'], 'tps' => (int) $a['tps'], 'bilik' => (int) $a['bilik']];
+        }
+
+        // Rentang tidak boleh saling tumpang tindih (supaya hasilnya tidak bergantung urutan)
+        $urut = collect($aturan)->sortBy('dari')->values();
+        for ($i = 1; $i < $urut->count(); $i++) {
+            if ($urut[$i]['dari'] <= $urut[$i - 1]['sampai']) {
+                return back()->with('error', "Aturan {$urut[$i - 1]['no']} dan {$urut[$i]['no']} tumpang tindih. Perbaiki rentangnya.");
+            }
+        }
+
+        $ringkas = [];
+        $total = 0;
+
+        DB::transaction(function () use ($aturan, &$ringkas, &$total) {
+            foreach ($aturan as $r) {
+                $n = DB::table('pemilih')
+                    ->whereBetween('no_urut_dpt', [$r['dari'], $r['sampai']])
+                    ->update(['no_tps' => $r['tps'], 'no_bilik' => $r['bilik']]);
+
+                $total += $n;
+                $ringkas[] = "TPS {$r['tps']} bilik {$r['bilik']}: {$n}";
+            }
+        });
+
+        if ($total === 0) {
+            return back()->with('error', 'Tidak ada pemilih pada rentang No. Urut itu, jadi tidak ada yang diubah.');
+        }
+
+        return back()->with('success', "{$total} pemilih diatur (" . implode('; ', $ringkas) . ').');
+    }
+
+    // Kunci layar voting ke satu TPS (kosong = semua TPS boleh)
+    public function kunciKiosk(Request $request)
+    {
+        $v = Validator::make($request->all(), ['tps' => 'nullable|integer|between:1,99']);
+
+        if ($v->fails()) {
+            return back()->with('error', 'Nomor TPS harus angka 1-99, atau kosongkan untuk membuka semua TPS.');
+        }
+
+        $tps = $request->filled('tps') ? (int) $request->tps : null;
+
+        try {
+            Pengaturan::setTpsKiosk($tps);
+        } catch (\Throwable $e) {
+            report($e);
+            return back()->with('error', 'Pengaturan gagal disimpan. Jalankan php artisan migrate, lalu coba lagi.');
+        }
+
+        return back()->with('success', $tps
+            ? "Layar voting dikunci ke TPS {$tps}. Pemilih dari TPS lain akan ditolak."
+            : 'Layar voting dibuka untuk semua TPS.');
+    }
+
     // Jaga-jaga: pemilih yang belum punya kode (mis. ditambah lewat jalur lain) langsung dibuatkan
     private function pastikanKode(object $pemilih): object
     {
@@ -235,17 +337,28 @@ class PemilihController extends Controller
             'nama'          => 'required|string|max:255',
             'jenis_kelamin' => 'required|in:L,P',
             'umur'          => 'required|numeric|min:17',
+            'no_tps'        => 'nullable|integer|between:1,99',
+            'no_bilik'      => 'nullable|integer|between:1,99',
+        ], [
+            'no_tps.between'   => 'Gagal: Nomor TPS harus antara 1 sampai 99!',
+            'no_bilik.between' => 'Gagal: Nomor bilik harus antara 1 sampai 99!',
         ]);
 
-        // Eksekusi update ke database
-        \Illuminate\Support\Facades\DB::table('pemilih')->where('nik', $nik)->update([
+        $data = [
             'id'             => $request->nik, // Update ID (karena ID kita = NIK)
             'nik'            => $request->nik,
             'no_urut_dpt'    => $request->no_urut_dpt,
             'nama'           => strtoupper($request->nama),
             'jenis_kelamin'  => $request->jenis_kelamin,
             'umur'           => $request->umur,
-        ]);
+        ];
+
+        // TPS/bilik hanya diubah kalau diisi (form lama tanpa kolom ini tidak mereset ke 1)
+        if ($request->filled('no_tps'))   { $data['no_tps']   = (int) $request->no_tps; }
+        if ($request->filled('no_bilik')) { $data['no_bilik'] = (int) $request->no_bilik; }
+
+        // Eksekusi update ke database
+        \Illuminate\Support\Facades\DB::table('pemilih')->where('nik', $nik)->update($data);
 
  
        return back()->with('success', 'Data pemilih berhasil diperbarui!');

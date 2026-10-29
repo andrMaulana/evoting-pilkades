@@ -42,6 +42,19 @@ class Pengaturan
         );
     }
 
+    /** Nomor TPS yang dikunci untuk layar voting ini, atau null kalau semua TPS boleh. */
+    public static function tpsKiosk(): ?int
+    {
+        $tps = (int) self::ambil('tps_kiosk', '0');
+
+        return $tps > 0 ? $tps : null;
+    }
+
+    public static function setTpsKiosk(?int $tps): void
+    {
+        self::simpan('tps_kiosk', $tps === null ? '0' : (string) $tps);
+    }
+
     /** Apakah perolehan suara per kandidat sedang disembunyikan di dashboard. */
     public static function perolehanDisembunyikan(): bool
     {

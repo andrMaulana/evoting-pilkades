@@ -49,6 +49,11 @@
                         <td class="py-2 px-2">:</td>
                         <td class="py-2 font-bold">TPS {{ str_pad($pemilih->no_tps, 2, '0', STR_PAD_LEFT) }}</td>
                     </tr>
+                    <tr>
+                        <td class="py-2 font-semibold">Bilik Suara</td>
+                        <td class="py-2 px-2">:</td>
+                        <td class="py-2 font-bold">Bilik {{ $pemilih->no_bilik }}</td>
+                    </tr>
                 </table>
             </div>
 

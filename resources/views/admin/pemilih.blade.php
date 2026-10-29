@@ -62,6 +62,16 @@
                 🖨️ Cetak Massal
             </button>
 
+            <!-- Tombol Atur TPS & Bilik massal -->
+            <button type="button" onclick="document.getElementById('modalAturTps').classList.remove('hidden')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition-colors flex items-center gap-2 text-sm">
+                📍 Atur TPS &amp; Bilik
+            </button>
+
+            <!-- Tombol Kunci layar voting ke satu TPS -->
+            <button type="button" onclick="document.getElementById('modalKunci').classList.remove('hidden')" class="px-4 py-2 font-semibold rounded-lg transition-colors flex items-center gap-2 text-sm {{ $tpsKiosk ? 'bg-amber-100 hover:bg-amber-200 text-amber-800' : 'bg-slate-100 hover:bg-slate-200 text-slate-700' }}">
+                🔒 Kiosk: {{ $tpsKiosk ? 'TPS ' . str_pad((string) $tpsKiosk, 2, '0', STR_PAD_LEFT) : 'Semua TPS' }}
+            </button>
+
             <!-- Tombol Tambah Manual (Belum aktif, nanti kita buat formnya) -->
             <button type="button" onclick="document.getElementById('modalTambah').classList.remove('hidden')" class="px-4 py-2 bg-[#1b5b9c] hover:bg-[#154a80] text-white font-semibold rounded-lg transition-colors flex items-center gap-2 text-sm">
                 + Tambah Manual
@@ -91,6 +101,7 @@
                     <th class="px-6 py-4 font-bold">Nama Lengkap</th>
                     <th class="px-6 py-4 font-bold">L/P</th>
                     <th class="px-6 py-4 font-bold">Usia</th>
+                    <th class="px-6 py-4 font-bold">TPS / Bilik</th>
                     <th class="px-6 py-4 font-bold text-center">Status</th>
                     <th class="px-6 py-4 font-bold text-right">Aksi</th>
                 </tr>
@@ -103,6 +114,7 @@
                     <td class="px-6 py-4 font-semibold text-slate-800">{{ $p->nama }}</td>
                     <td class="px-6 py-4">{{ $p->jenis_kelamin ?? '-' }}</td>
                     <td class="px-6 py-4">{{ $p->umur ? $p->umur . ' thn' : '-' }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">{{ $p->no_tps }} / {{ $p->no_bilik }}</td>
                     <td class="px-6 py-4 text-center">
                         @if($p->status_memilih == 1)
                             <span class="inline-block px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold">Sudah</span>
@@ -112,7 +124,7 @@
                     </td>
                     <td class="px-6 py-4 text-right">
 <!-- Ganti tombol Edit jadi ini -->
-                        <button onclick="bukaModalEdit('{{ $p->nik }}', '{{ $p->no_urut_dpt }}', '{{ $p->nama }}', '{{ $p->jenis_kelamin }}', '{{ $p->umur }}')" class="text-[#1b5b9c] hover:underline text-xs font-bold mr-3">Edit</button>
+                        <button onclick="bukaModalEdit({{ \Illuminate\Support\Js::from(['nik' => $p->nik, 'no_urut' => $p->no_urut_dpt, 'nama' => $p->nama, 'jk' => $p->jenis_kelamin, 'umur' => $p->umur, 'tps' => $p->no_tps, 'bilik' => $p->no_bilik]) }})" class="text-[#1b5b9c] hover:underline text-xs font-bold mr-3">Edit</button>
                         <a href="{{ route('admin.pemilih.cetak', $p->nik) }}" target="_blank" class="text-slate-500 hover:text-slate-800 text-xs font-bold">🖨️ Cetak</a>
                         @if($p->status_memilih != 1)
                         <form action="{{ route('admin.pemilih.qr-baru', $p->nik) }}" method="POST" class="inline" onsubmit="return confirm('Terbitkan QR baru untuk pemilih ini? QR lama langsung tidak berlaku dan kartunya harus dicetak ulang.')">
@@ -124,7 +136,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="7" class="px-6 py-8 text-center text-slate-500">
+                    <td colspan="8" class="px-6 py-8 text-center text-slate-500">
                         Belum ada data pemilih. Silakan import dari Excel atau tambah manual.
                     </td>
                 </tr>
@@ -175,6 +187,164 @@
         </div>
     </div>
 
+    <!-- Modal Atur TPS & Bilik Massal -->
+    <div id="modalAturTps" class="fixed inset-0 z-50 hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0">
+                <h3 class="font-bold text-slate-800">Atur TPS &amp; Bilik Massal</h3>
+                <button type="button" onclick="document.getElementById('modalAturTps').classList.add('hidden')" class="text-slate-400 hover:text-red-500 font-bold">✕</button>
+            </div>
+            <form id="formAturTps" action="{{ route('admin.pemilih.atur-tps') }}" method="POST" class="p-6 space-y-5">
+                @csrf
+
+                <div>
+                    <p class="text-sm font-semibold text-slate-700">Sebaran saat ini</p>
+                    <div class="flex flex-wrap gap-2 mt-2">
+                        @forelse($sebaran as $s)
+                            <span class="px-2.5 py-1 rounded-full bg-slate-100 text-xs font-medium text-slate-700">TPS {{ $s->no_tps }} · Bilik {{ $s->no_bilik }}: <b>{{ $s->jumlah }}</b></span>
+                        @empty
+                            <span class="text-xs text-slate-500">Belum ada pemilih.</span>
+                        @endforelse
+                    </div>
+                </div>
+
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-sm font-semibold text-slate-700">Isi otomatis (bagi rata ke beberapa bilik)</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3 items-end">
+                        <div><label class="block text-xs font-semibold text-slate-600 mb-1">Dari No. Urut</label><input type="number" id="ba_dari" min="1" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-semibold text-slate-600 mb-1">Sampai No. Urut</label><input type="number" id="ba_sampai" min="1" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-semibold text-slate-600 mb-1">TPS</label><input type="number" id="ba_tps" min="1" max="99" value="1" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-semibold text-slate-600 mb-1">Jumlah bilik</label><input type="number" id="ba_bilik" min="1" max="20" value="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>
+                        <button type="button" id="btnBuatAturan" class="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-lg text-sm">Buat aturan</button>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-2">Contoh: 1 sampai 1000, TPS 1, 2 bilik, hasilnya bilik 1 = 1–500 dan bilik 2 = 501–1000.</p>
+                    <p id="bantuError" class="text-xs text-red-600 mt-1 hidden"></p>
+                </div>
+
+                <div>
+                    <p class="text-sm font-semibold text-slate-700 mb-2">Aturan yang akan diterapkan</p>
+                    <div id="aturanBaris" class="space-y-2"></div>
+                    <button type="button" id="btnTambahAturan" class="mt-3 text-sm font-semibold text-[#1b5b9c] hover:underline">+ Tambah aturan manual</button>
+                </div>
+
+                <p class="text-xs text-slate-500">Hanya TPS dan bilik yang berubah, pemilih di luar rentang tidak disentuh. Rentang antar-aturan tidak boleh tumpang tindih.</p>
+
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="document.getElementById('modalAturTps').classList.add('hidden')" class="flex-1 px-4 py-2 bg-slate-100 text-slate-600 font-semibold rounded-lg text-sm">Batal</button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-[#1b5b9c] hover:bg-[#154a80] text-white font-semibold rounded-lg text-sm">Terapkan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Kunci layar voting ke satu TPS -->
+    <div id="modalKunci" class="fixed inset-0 z-50 hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-slate-800">Kunci Layar Voting ke TPS</h3>
+                <button type="button" onclick="document.getElementById('modalKunci').classList.add('hidden')" class="text-slate-400 hover:text-red-500 font-bold">✕</button>
+            </div>
+            <form action="{{ route('admin.pemilih.kunci-kiosk') }}" method="POST" class="p-6 space-y-4">
+                @csrf
+                <p class="text-sm text-slate-600">
+                    Saat ini layar voting
+                    <b>{{ $tpsKiosk ? 'dikunci ke TPS ' . str_pad((string) $tpsKiosk, 2, '0', STR_PAD_LEFT) : 'melayani semua TPS' }}</b>.
+                </p>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1">Kunci ke TPS nomor</label>
+                    <input type="number" name="tps" min="1" max="99" value="{{ $tpsKiosk }}" placeholder="Kosongkan = semua TPS" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                </div>
+                <p class="text-xs text-slate-500">Pemilih yang terdaftar di TPS lain akan ditolak dan diberi tahu TPS serta bilik mereka. Pengaturan ini berlaku untuk layar voting yang memakai server ini.</p>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="document.getElementById('modalKunci').classList.add('hidden')" class="flex-1 px-4 py-2 bg-slate-100 text-slate-600 font-semibold rounded-lg text-sm">Batal</button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-[#1b5b9c] hover:bg-[#154a80] text-white font-semibold rounded-lg text-sm">Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        const wadah = document.getElementById('aturanBaris');
+        const form = document.getElementById('formAturTps');
+        const err = document.getElementById('bantuError');
+        let urutan = 0;
+
+        const nilai = (id) => parseInt(document.getElementById(id).value, 10);
+        const kolom = (label, nama, v, i, extra) =>
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1">' + label + '</label>' +
+            '<input type="number" min="1" ' + (extra || '') + ' name="aturan[' + i + '][' + nama + ']" value="' + (v === undefined || v === null ? '' : v) + '" ' +
+            'class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></div>';
+
+        function tambahBaris(v) {
+            v = v || {};
+            const i = urutan++;
+            const div = document.createElement('div');
+            div.setAttribute('data-baris', '');
+            div.className = 'grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-end';
+            div.innerHTML =
+                kolom('Dari No. Urut', 'dari', v.dari, i) + kolom('Sampai No. Urut', 'sampai', v.sampai, i) +
+                kolom('TPS', 'tps', v.tps, i, 'max="99"') + kolom('Bilik', 'bilik', v.bilik, i, 'max="99"') +
+                '<button type="button" data-hapus aria-label="Hapus aturan" class="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg text-sm">✕</button>';
+            wadah.appendChild(div);
+        }
+
+        // Bagi rentang ke n bilik dengan ukuran sama (bilik terakhir memakai sisa)
+        function bagiRata(dari, sampai, tps, n) {
+            const ukuran = Math.ceil((sampai - dari + 1) / n);
+            const hasil = [];
+            for (let b = 1; b <= n; b++) {
+                const a = dari + (b - 1) * ukuran;
+                if (a > sampai) break;
+                hasil.push({ dari: a, sampai: Math.min(sampai, a + ukuran - 1), tps: tps, bilik: b });
+            }
+            return hasil;
+        }
+        window.bagiRataBilik = bagiRata;
+
+        function barisKosong(div) {
+            return [...div.querySelectorAll('input')].every((x) => x.value === '');
+        }
+
+        document.getElementById('btnTambahAturan').addEventListener('click', () => tambahBaris());
+
+        wadah.addEventListener('click', (e) => {
+            const tombol = e.target.closest('[data-hapus]');
+            if (tombol) tombol.closest('[data-baris]').remove();
+        });
+
+        document.getElementById('btnBuatAturan').addEventListener('click', () => {
+            const dari = nilai('ba_dari'), sampai = nilai('ba_sampai'), tps = nilai('ba_tps'), n = nilai('ba_bilik');
+            let masalah = '';
+            if (!(dari >= 1) || !(sampai >= dari)) masalah = 'Isi rentang No. Urut dengan benar (Sampai tidak boleh lebih kecil dari Dari).';
+            else if (!(tps >= 1 && tps <= 99)) masalah = 'TPS harus 1 sampai 99.';
+            else if (!(n >= 1 && n <= 20)) masalah = 'Jumlah bilik harus 1 sampai 20.';
+
+            err.textContent = masalah;
+            err.classList.toggle('hidden', masalah === '');
+            if (masalah) return;
+
+            [...wadah.querySelectorAll('[data-baris]')].filter(barisKosong).forEach((d) => d.remove());
+            bagiRata(dari, sampai, tps, n).forEach(tambahBaris);
+        });
+
+        form.addEventListener('submit', (e) => {
+            const baris = [...wadah.querySelectorAll('[data-baris]')].filter((d) => !barisKosong(d));
+            if (baris.length === 0) {
+                e.preventDefault();
+                err.textContent = 'Belum ada aturan. Pakai "Buat aturan" atau "Tambah aturan manual".';
+                err.classList.remove('hidden');
+                return;
+            }
+            if (!confirm('Terapkan ' + baris.length + ' aturan TPS/bilik? Data TPS dan bilik pemilih pada rentang itu akan diganti.')) {
+                e.preventDefault();
+            }
+        });
+
+        tambahBaris();   // satu baris kosong sebagai awal
+    })();
+    </script>
+
     <!-- Modal Tambah Manual -->
     <div id="modalTambah" class="fixed inset-0 z-50 hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
@@ -216,6 +386,16 @@
                     <div>
                         <label class="block text-sm font-semibold text-slate-700 mb-1">Usia</label>
                         <input type="number" name="umur" required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1b5b9c] outline-none">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">TPS</label>
+                        <input type="number" name="no_tps" min="1" max="99" value="1" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1b5b9c] outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Bilik</label>
+                        <input type="number" name="no_bilik" min="1" max="99" value="1" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1b5b9c] outline-none">
                     </div>
                 </div>
                 <div class="pt-4 flex gap-3">
@@ -269,6 +449,16 @@
                         <input type="number" name="umur" id="edit_umur" required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1b5b9c] outline-none">
                     </div>
                 </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">TPS</label>
+                        <input type="number" name="no_tps" id="edit_tps" min="1" max="99" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1b5b9c] outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Bilik</label>
+                        <input type="number" name="no_bilik" id="edit_bilik" min="1" max="99" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1b5b9c] outline-none">
+                    </div>
+                </div>
                 <div class="pt-4 flex gap-3">
                     <button type="button" onclick="document.getElementById('modalEdit').classList.add('hidden')" class="flex-1 px-4 py-2 bg-slate-100 text-slate-600 font-semibold rounded-lg hover:bg-slate-200">Batal</button>
                     <button type="submit" class="flex-1 px-4 py-2 bg-[#1b5b9c] text-white font-semibold rounded-lg hover:bg-[#154a80]">Simpan Perubahan</button>
@@ -279,17 +469,19 @@
 
     <!-- Script Pelempar Data ke Modal -->
     <script>
-        function bukaModalEdit(nik, no_urut, nama, jk, umur) {
+        function bukaModalEdit(p) {
             // Isi form dengan data warga yang dipilih
-            document.getElementById('edit_nik').value = nik;
-            document.getElementById('edit_no_urut').value = no_urut;
-            document.getElementById('edit_nama').value = nama;
-            document.getElementById('edit_jk').value = jk;
-            document.getElementById('edit_umur').value = umur;
-            
+            document.getElementById('edit_nik').value = p.nik;
+            document.getElementById('edit_no_urut').value = p.no_urut;
+            document.getElementById('edit_nama').value = p.nama;
+            document.getElementById('edit_jk').value = p.jk;
+            document.getElementById('edit_umur').value = p.umur;
+            document.getElementById('edit_tps').value = p.tps;
+            document.getElementById('edit_bilik').value = p.bilik;
+
             // Ubah tujuan URL action sesuai NIK warga
-            document.getElementById('formEdit').action = '/admin/pemilih/update/' + nik;
-            
+            document.getElementById('formEdit').action = '/admin/pemilih/update/' + encodeURIComponent(p.nik);
+
             // Tampilkan modalnya
             document.getElementById('modalEdit').classList.remove('hidden');
         }

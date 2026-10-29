@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB; // Ini ibarat kunci inggris buat ngutak-ngati
 use Illuminate\Support\Facades\Validator;
 use App\Support\FotoKandidat;
 use App\Support\KodeQr;
+use App\Support\Pengaturan;
 
 class VotingController extends Controller
 {
@@ -24,7 +25,9 @@ class VotingController extends Controller
             ])
             ->values();
 
-        return view('voting', compact('kandidat'));
+        $tpsKiosk = Pengaturan::tpsKiosk();   // null = semua TPS boleh
+
+        return view('voting', compact('kandidat', 'tpsKiosk'));
     }
 
     // Fungsi 1: Mengecek apakah QR Code valid dan belum dipakai
@@ -51,6 +54,18 @@ class VotingController extends Controller
             return response()->json([
                 'status' => 'sudah_memilih',
                 'pesan' => 'Maaf, Anda sudah memberikan suara!'
+            ], 403);
+        }
+
+        // Skenario B2: Layar voting ini dikunci ke satu TPS, tapi pemilih terdaftar di TPS lain
+        $tpsKiosk = Pengaturan::tpsKiosk();
+        if ($tpsKiosk !== null && (int) $pemilih->no_tps !== $tpsKiosk) {
+            return response()->json([
+                'status'   => 'beda_tps',
+                'pesan'    => 'Maaf, Anda terdaftar di TPS ' . str_pad((string) $pemilih->no_tps, 2, '0', STR_PAD_LEFT)
+                              . ' (Bilik ' . $pemilih->no_bilik . '). Silakan menuju TPS tersebut.',
+                'no_tps'   => (int) $pemilih->no_tps,
+                'no_bilik' => (int) $pemilih->no_bilik,
             ], 403);
         }
 
@@ -84,9 +99,10 @@ class VotingController extends Controller
 
         $kode       = KodeQr::bersihkan($request->input('qr_id'));
         $kandidatId = $request->input('kandidat_id');
+        $tpsKiosk   = Pengaturan::tpsKiosk();
 
         try {
-            $hasil = DB::transaction(function () use ($kode, $kandidatId) {
+            $hasil = DB::transaction(function () use ($kode, $kandidatId, $tpsKiosk) {
 
                 // 0. Bentuk kode salah (termasuk NIK) -> tidak terdaftar
                 if (!KodeQr::valid($kode)) {
@@ -97,16 +113,25 @@ class VotingController extends Controller
                 //    Ini satu perintah UPDATE yang atomik: kalau ada dua request bersamaan
                 //    (klik ganda / sengaja ditembak berulang), hanya satu yang berhasil
                 //    mengubah baris, sisanya mendapat 0 baris terubah.
-                $diperbarui = DB::table('pemilih')
+                $query = DB::table('pemilih')
                     ->where('kode_qr', $kode)
-                    ->where('status_memilih', false)
-                    ->update(['status_memilih' => true]);   // updated_at sengaja tidak disentuh
+                    ->where('status_memilih', false);
+
+                // Kalau layar voting dikunci ke satu TPS, syarat ini ikut masuk ke UPDATE yang sama (tetap atomik)
+                if ($tpsKiosk !== null) {
+                    $query->where('no_tps', $tpsKiosk);
+                }
+
+                $diperbarui = $query->update(['status_memilih' => true]);   // updated_at sengaja tidak disentuh
 
                 if ($diperbarui === 0) {
-                    // Gagal: bedakan QR palsu vs sudah pernah memilih
-                    return DB::table('pemilih')->where('kode_qr', $kode)->exists()
-                        ? 'sudah_memilih'
-                        : 'tidak_terdaftar';
+                    // Gagal: bedakan QR palsu, sudah pernah memilih, atau beda TPS
+                    $p = DB::table('pemilih')->where('kode_qr', $kode)->first(['status_memilih']);
+
+                    if (!$p) {
+                        return 'tidak_terdaftar';
+                    }
+                    return $p->status_memilih ? 'sudah_memilih' : 'beda_tps';
                 }
 
                 // 2. Masukkan suara ke kotak suara (tanpa identitas pemilih)
@@ -136,6 +161,13 @@ class VotingController extends Controller
             return response()->json([
                 'status' => 'sudah_memilih',
                 'pesan'  => 'Maaf, Anda sudah memberikan suara!'
+            ], 403);
+        }
+
+        if ($hasil === 'beda_tps') {
+            return response()->json([
+                'status' => 'beda_tps',
+                'pesan'  => 'Maaf, Anda terdaftar di TPS lain. Silakan menuju TPS Anda.'
             ], 403);
         }
 

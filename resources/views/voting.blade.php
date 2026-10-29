@@ -144,7 +144,7 @@
                  class="h-11 w-auto" draggable="false" onerror="this.style.display='none'">
             <div class="leading-tight">
                 <p class="font-bold text-brand">Pilkades Curug</p>
-                <p class="text-xs text-slate-500">Pemilihan Kepala Desa</p>
+                <p class="text-xs text-slate-500">Pemilihan Kepala Desa @if($tpsKiosk)· TPS {{ str_pad((string) $tpsKiosk, 2, '0', STR_PAD_LEFT) }}@endif</p>
             </div>
         </div>
     </header>
@@ -216,7 +216,7 @@
                 </svg>
             </div>
             <h2 id="warning-title" class="mt-5 text-xl font-bold">Maaf, Anda sudah memberikan suara!</h2>
-            <p class="mt-2 text-slate-500">QR code ini sudah dipakai dan tidak bisa digunakan lagi.</p>
+            <p id="warning-desc" class="mt-2 text-slate-500">QR code ini sudah dipakai dan tidak bisa digunakan lagi.</p>
             <button id="btn-kembali-kamera" type="button"
                     class="mt-7 w-full h-12 rounded-xl bg-brand hover:bg-brand-dark text-white font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
                 Kembali ke kamera
@@ -478,6 +478,17 @@
             }
         }
 
+// Modal peringatan dipakai untuk "sudah memilih" dan "beda TPS": isinya diganti sesuai kasus
+const PERINGATAN_BAWAAN = {
+    judul: 'Maaf, Anda sudah memberikan suara!',
+    isi: 'QR code ini sudah dipakai dan tidak bisa digunakan lagi.'
+};
+function tampilkanPeringatan(judul, isi) {
+    document.getElementById('warning-title').textContent = judul;
+    document.getElementById('warning-desc').textContent = isi;
+    openModal(warningModal);
+}
+
 async function onScanSuccess(decodedText) {
     if (scanLocked) return;       
     scanLocked = true;
@@ -507,7 +518,10 @@ async function onScanSuccess(decodedText) {
             showVoting();
         } else if (response.status === 403 && result.status === 'sudah_memilih') {
             // Skenario: Data ada tapi status_memilih = 1
-            openModal(warningModal);
+            tampilkanPeringatan(PERINGATAN_BAWAAN.judul, PERINGATAN_BAWAAN.isi);
+        } else if (response.status === 403 && result.status === 'beda_tps') {
+            // Skenario: layar ini dikunci ke satu TPS, pemilih terdaftar di TPS lain
+            tampilkanPeringatan('Maaf, Anda terdaftar di TPS lain', result.pesan);
         } else {
             // Skenario: QR Code tidak ada di database (bodong)
             scanLocked = false;

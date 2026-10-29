@@ -35,6 +35,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/admin/pemilih/store', [PemilihController::class, 'store'])->name('admin.pemilih.store');
     // Rute untuk cetak undangan massal (filter TPS / rentang No. Urut)
     Route::get('/admin/pemilih/cetak-massal', [PemilihController::class, 'cetakMassal'])->name('admin.pemilih.cetak-massal');
+    // Rute untuk mengatur TPS & bilik massal dan mengunci layar voting ke satu TPS
+    Route::post('/admin/pemilih/atur-tps', [PemilihController::class, 'aturTps'])->name('admin.pemilih.atur-tps');
+    Route::post('/admin/pemilih/kunci-kiosk', [PemilihController::class, 'kunciKiosk'])->name('admin.pemilih.kunci-kiosk');
     // Rute untuk menerbitkan QR baru (kartu hilang)
     Route::post('/admin/pemilih/qr-baru/{nik}', [PemilihController::class, 'qrBaru'])->name('admin.pemilih.qr-baru');
     // Rute untuk cetak undangan per warga
